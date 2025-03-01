@@ -1,0 +1,10 @@
+{
+    "sql": "CREATE TABLE IF NOT EXISTS user_tmp(id INTEGER NOT NULL PRIMARY KEY, username TEXT NOT NULL, password TEXT NOT NULL, test_field TEXT NOT NULL);INSERT INTO user_tmp (id, username, password, test_field) SELECT id, username, password, test_field FROM user;DROP TABLE user;ALTER TABLE user_tmp RENAME TO user;",
+    "name": "user_0003",
+    "schema": [
+        "id INTEGER NOT NULL PRIMARY KEY",
+        "username TEXT NOT NULL",
+        "password TEXT NOT NULL",
+        "test_field TEXT NOT NULL"
+    ]
+}
