@@ -1,9 +1,0 @@
-{
-    "sql": "CREATE TABLE IF NOT EXISTS user(id INTEGER NOT NULL PRIMARY KEY, username TEXT NOT NULL, password TEXT NOT NULL)",
-    "name": "user_0000",
-    "schema": [
-        "id INTEGER NOT NULL PRIMARY KEY",
-        "username TEXT NOT NULL",
-        "password TEXT NOT NULL"
-    ]
-}

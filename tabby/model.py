@@ -2,7 +2,6 @@ from tabby.connection import db
 from tabby.field import *
 
 class Model:
-    
     def __init__(self, **kwargs):
         self._table = self.__class__.__name__.lower()
         for k, v in kwargs.items():
@@ -72,4 +71,3 @@ class User(Model):
     id = IntegerField(primary_key=True)
     username = StringField()
     password = StringField()
-    test_field = StringField()

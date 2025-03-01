@@ -57,16 +57,31 @@ class MigrationManager:
             if old_schema == schema:
                 log.error("No schema changes since last migration.")
                 return
+        
+            column_additions = []
+            for column in schema:
+                if column not in old_schema:
+                    if "DEFAULT" not in column:
+                        log.error(f"Cannot add column {column.split()[0]} to {table_name}: a default must be applied when adding a NOT NULL field to the database.")
+                        return
+                    query_string = f"ALTER TABLE {table_name} ADD COLUMN {column}"
+                    column_additions.append(query_string)
+                    
+            for column in old_schema:
+                if column not in schema:
+                    query_string = f"ALTER TABLE {table_name} DROP COLUMN {column.split()[0]}"
+                    column_additions.append(query_string)
             
             log.log("Creating SQL query...")
             schema_text = ", ".join(schema)
             column_names_text = ", ".join(cls.get_columns())
+            table_columns_addition = f"; ".join(column_additions)
             table_creation = f"CREATE TABLE IF NOT EXISTS {table_name}_tmp({schema_text})"
             table_movement = f"INSERT INTO {table_name}_tmp ({column_names_text}) SELECT {column_names_text} FROM {table_name}"
             table_deletion = f"DROP TABLE {table_name}"
             table_rename = f"ALTER TABLE {table_name}_tmp RENAME TO {table_name}"
             
-            sql_instruction = f"{table_creation};{table_movement};{table_deletion};{table_rename};"
+            sql_instruction = f"{table_columns_addition};{table_creation};{table_movement};{table_deletion};{table_rename};"
         
         migration_data = {
             "sql": sql_instruction,
@@ -97,7 +112,7 @@ class MigrationManager:
         if len(unapplied_migrations) == 0:
             log.error("No unapplied migrations.")
             return
-        
+
         log.info(f"{len(unapplied_migrations)} unapplied migrations.")
         
         for migration in sorted(unapplied_migrations):
