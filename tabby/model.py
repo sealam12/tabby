@@ -1,71 +1,62 @@
-from tabby.connection import db
-from tabby.field import *
+from tabby.fields import *
+from tabby.adapters import Connector
 
 class Model:
     def __init__(self, **kwargs):
+        self._fields = []
+        self._fields_dict = {}
+        for k, v in self.__class__.__dict__.items():
+            if not isinstance(v, Field): continue
+            setattr(self, f"_field_{k}", v)
+            self._fields.append(k)
+            self._fields_dict[k] = v
+        
         self._table = self.__class__.__name__.lower()
         for k, v in kwargs.items():
+            # Turn integer id field for foreign keys into a class object of it's type
+            if isinstance(self._fields_dict[k], ForeignKey) and v != None:
+                setattr(self, k, Connector.adapter.get(self._fields_dict[k].reference_class, id=v))
+                                
             setattr(self, k, v)
+    
+    def get_fields(self):
+        fields = {}
+        for k, v in self.__dict__.items():
+            if not isinstance(self._fields_dict[k], Field): continue
+            fields[k] = v
+        
+        return fields
     
     # Save any changes made to the model class
     def save(self):
-        columns = self.get_columns_dict()
-        columns_set_list = []
-        for k, v in columns.items():
-            if isinstance(v, str): v = f"\"{v}\""
-            columns_set_list.append(f"{k}={v}")
-        columns_set_text = ", ".join(columns_set_list)
-        
-        sql = f"UPDATE {self._table} SET {columns_set_text} WHERE id={self.id}"
-        db.execute(sql)
-        db.commit()
-    
-    # Returns a dict of the columns and their values in a Model class
-    # Used primarily for saving models
-    def get_columns_dict(self):
-        columns = {}
-        for k, v in self.__dict__.items():
-            if k[0] == "_": continue
-            columns[k] = v
-        
-        return columns
+        Connector.save(self)
     
     # Fetches the list of columns specified by the class in the definition
     @classmethod
-    def get_columns(cls, *, types=False, constraints=False):
-        columns = []
+    def get_fields(cls):
+        fields = {}
         
         for k, v in cls.__dict__.items():
             if not isinstance(v, Field): continue
-            column_text = str(k)
-            if types: column_text += f" {v.sql_type}"
-            if constraints: column_text += f" {' '.join(v.constraints)}"
-            
-            columns.append(column_text)
+            fields[k] = v
         
-        return columns
+        return fields
     
-    # Fetches model from database based off of queries / constraints
-    # provided through KWARGS
     @classmethod
     def get(cls, **kwargs):
-        columns = cls.get_columns()
-        table_name = cls.__name__.lower()
-        columns_text = ", ".join(columns)
-        
-        kwargs_list = [f"{k}={v}" for k, v in kwargs.items()]
-        kwargs_text = ", ".join(kwargs_list)
-        sql = f"SELECT {columns_text} FROM {table_name} WHERE ({kwargs_text})"
-        
-        model_data = db.execute(sql).fetchone()
-        new_model_kwargs = {}
-        for index, value in enumerate(model_data):
-            col = columns[index]
-            new_model_kwargs[col] = value
-        
-        # Initialize a class for the model retrieved with columns & values
-        model = cls(**new_model_kwargs)
-        return model
+        return Connector.get(cls, **kwargs)
+
+    @classmethod
+    def filter(cls, **kwargs):
+        return Connector.filter(cls, **kwargs)
+    
+    @classmethod
+    def all(cls, **kwargs):
+        return Connector.all(cls, **kwargs)
+    
+    @classmethod
+    def get_table(cls):
+        return cls.__name__.lower()
 
 class User(Model):
     id = IntegerField(primary_key=True)

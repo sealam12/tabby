@@ -1,8 +1,9 @@
 import sqlite3
+from tabby.config import Settings
 
 class ConnectionManager:
     def __init__(self, database):
-        self.con = sqlite3.connect(database)
+        self.con = sqlite3.connect(Settings.DATABASE_PATH)
         self.cursor = self.con.cursor()
     
     def execute(self, sql, *args, **kwargs):

@@ -1,12 +1,15 @@
 import os, sys, json
 from tabby.connection import db
+from tabby.adapters import Connector
 from tabby.model import Model
+from tabby import serialize
 from tabby import log
 
 class MigrationManager:
     def __init__(self, models_path, migrations_path):
         self.models_path = models_path
         self.migrations_path = migrations_path
+        Connector.migrations.ensure_table()
     
     def scan_file(self, file):
         module_name = file[0:-3]
@@ -27,110 +30,114 @@ class MigrationManager:
             models = self.scan_file(self.models_path)
         return models
 
-    def ensure_migrations_table(self):
-        db.execute("CREATE TABLE IF NOT EXISTS migrations(id INTEGER, model TEXT, name TEXT, applied BOOLEAN)")
+    def save_migration(self, data, name):
+        with open(f"{self.migrations_path}/{name}.json", "w") as file:
+            json.dump(data, file, indent=4)
     
+    def load_migration(self, name):
+        with open(f"{self.migrations_path}/{name}.json", "r") as file:
+            data = json.load(file)
+        return data
+
     def make_class_migrations(self, cls):
-        table_name = cls.__name__.lower()
-        log.log("Collecting previous migrations..")
-        sql = db.execute(f"SELECT id FROM migrations WHERE model=?", (table_name, )).fetchall()
-        migration_id = len(sql)
-        migration_name = f"{table_name}_{migration_id:04}"
+        log.log("Checking for previous migrations...")
+        previous_migrations = Connector.migrations.fetch_migrations(cls)
+        log.log(f"Found {len(previous_migrations)} previous migrations.")
+        # unapplied_migrations = [m for m in previous_migrations if bool(m[2])]
         
-        log.log(f"Fetching schema for [{table_name}]...")
-        schema = cls.get_columns(types=True,constraints=True)
-        if len(sql) == 0:
-            log.info("No previous migrations, adding new table to migration...")
-            schema_text = ", ".join(schema)
-            sql_instruction = f"CREATE TABLE IF NOT EXISTS {table_name}({schema_text})"
+        current_schema = serialize.serialize_model(cls)
+            
+        if len(previous_migrations) == 0:
+            migration_id = 0
+            log.error("No previous migrations found.")
+            
+            data = {
+                "cmds": [],
+                "schema": current_schema
+            }
+            
+            log.log("Saving migration...")
+            data['cmds'].append(Connector.migrations.new_table(cls))
+            migration_name = f"{cls.get_table()}_{migration_id:04}"
+            self.save_migration(data, migration_name)
+            
+            save_cmd = Connector.migrations.save_migration(cls.get_table(), migration_id)
+            db.execute(save_cmd)
+            
+            log.success(f"Saved migration to {self.migrations_path}/{migration_name}.json")
         else:
-            # Sorts the found ID's in the table and returns the largest ID
-            most_recent_migration = sorted(sql)[-1][0]
-            recent_file = f"{table_name}_{most_recent_migration:04}"
+            most_recent = sorted(previous_migrations)[-1]
+            migration_id = len(previous_migrations)
             
-            # load the schema of the most recent migration
-            log.log("Checking most recent migration for schema changes...")
-            with open(f"{self.migrations_path}/{recent_file}.json", "r") as file:
-                recent_migration = json.load(file)
-            old_schema = recent_migration["schema"]
+            data = {
+                "cmds": [],
+                "schema": current_schema
+            }
             
-            if old_schema == schema:
-                log.error("No schema changes since last migration.")
+            old_schema = self.load_migration(f"{most_recent[1]}_{most_recent[0]:04}")["schema"]
+            log.log("Checking for schema changes...")
+            if old_schema == current_schema:
+                log.error("No changes since last migration.")
                 return
-        
-            column_additions = []
-            for column in schema:
-                if column not in old_schema:
-                    if "DEFAULT" not in column:
-                        log.error(f"Cannot add column {column.split()[0]} to {table_name}: a default must be applied when adding a NOT NULL field to the database.")
-                        return
-                    query_string = f"ALTER TABLE {table_name} ADD COLUMN {column}"
-                    column_additions.append(query_string)
+            
+            # Check for fields being added
+            for key, field in current_schema["fields"].items():
+                if key not in old_schema["fields"].keys():
+                    log.log(f"Found new field {key}")
+                    data["cmds"].append(Connector.migrations.new_field(cls, key, field))
+            
+            # Check for fields being removed
+            for key, field in old_schema["fields"].items():
+                if key not in current_schema["fields"].keys():
+                    log.log(f"Field {key} not in new schema")
+                    data["cmds"].append(Connector.migrations.remove_field(cls, key))
+            
+            # Check for field constraints being changed
+            for key, field in current_schema["fields"].items():
+                if key not in old_schema["fields"].keys(): continue
+                field2 = old_schema["fields"][key]
+                if field["constraints"] != field2["constraints"]:
+                    log.log(f"Found changed constraints on field {key}")
                     
-            for column in old_schema:
-                if column not in schema:
-                    query_string = f"ALTER TABLE {table_name} DROP COLUMN {column.split()[0]}"
-                    column_additions.append(query_string)
+                    data["cmds"].append(Connector.migrations.rename_field(cls, key, f"{key}_tmp"))
+                    data["cmds"].append(Connector.migrations.new_field(cls, key, field))
+                    data["cmds"].append(Connector.migrations.transfer_fields(cls, f"{key}_tmp", key))
+                    data["cmds"].append(Connector.migrations.remove_field(cls, f"{key}_tmp"))
             
-            log.log("Creating SQL query...")
-            schema_text = ", ".join(schema)
-            column_names_text = ", ".join(cls.get_columns())
-            table_columns_addition = f"; ".join(column_additions)
-            table_creation = f"CREATE TABLE IF NOT EXISTS {table_name}_tmp({schema_text})"
-            table_movement = f"INSERT INTO {table_name}_tmp ({column_names_text}) SELECT {column_names_text} FROM {table_name}"
-            table_deletion = f"DROP TABLE {table_name}"
-            table_rename = f"ALTER TABLE {table_name}_tmp RENAME TO {table_name}"
+            migration_name = f"{cls.get_table()}_{migration_id:04}"
+            self.save_migration(data, migration_name)
             
-            sql_instruction = f"{table_columns_addition};{table_creation};{table_movement};{table_deletion};{table_rename};"
+            save_cmd = Connector.migrations.save_migration(cls.get_table(), migration_id)
+            db.execute(save_cmd)
         
-        migration_data = {
-            "sql": sql_instruction,
-            "name": migration_name,
-            "schema": schema
-        }
-        
-        log.log("Saving migration...")
-        with open(f"{self.migrations_path}/{migration_name}.json", "w") as file:
-            json.dump(migration_data, file, indent=4)
-        db.execute("INSERT INTO migrations (id, model, name, applied) VALUES (?, ?, ?, ?)", (migration_id, table_name, migration_name, False, ))
         db.commit()
-        
-        log.success(f"Created migration [{migration_name}]")
     
     def makemigrations(self):
-        os.makedirs(self.migrations_path, exist_ok=True)
-        self.ensure_migrations_table()
         models = self.scan()
         for model in models:
-            log.info(f"Making migrations for [{model.__name__.lower()}]")
             self.make_class_migrations(model)
     
-    def applymigrations(self):
-        log.info("Applying migrations")
-        log.log("Fetching unapplied migrations...")
-        unapplied_migrations = db.execute("SELECT name FROM migrations WHERE applied=FALSE").fetchall()
-        if len(unapplied_migrations) == 0:
-            log.error("No unapplied migrations.")
-            return
-
-        log.info(f"{len(unapplied_migrations)} unapplied migrations.")
+    def apply_class_migrations(self, cls):
+        log.log("Checking for unapplied migrations...")
+        previous_migrations = Connector.migrations.fetch_migrations(cls)
+        unapplied_migrations = [m for m in previous_migrations if not bool(m[2])]
+        log.log(f"Found {len(unapplied_migrations)} unapplied migrations.")
         
-        for migration in sorted(unapplied_migrations):
-            migration_name = migration[0]
-            migration_file = f"{self.migrations_path}/{migration_name}.json"
-            log.info(f"Applying migration {migration_name}")
-            log.log("Fetching SQL query...")
-            with open(migration_file, "r") as file:
-                data = json.load(file)
-            
-            sql = data["sql"]
-            log.log("Executing SQL query...")
-            db.executescript(sql)
-            log.log("Updating migration records...")
-            db.execute("UPDATE migrations SET applied=TRUE WHERE name=?", (migration_name, ))
-            log.log("Commiting changes...")
-            db.commit()
-            log.success(f"Succesfully migrated {migration_name}")
+        for migration in unapplied_migrations:
+            migration_name = f"{migration[1]}_{migration[0]:04}"
+            # Load migration file and it's data
+            migration_data = self.load_migration(f"{migration_name}")
+            log.log(f"Applying migration {migration_name}...")
+            # Execute command specified by migration file
+            for cmd in migration_data["cmds"]: db.execute(cmd)
+            # Set migration status to applied in the database
+            Connector.migrations.set_migration_applied(migration[1], migration[0])
+        log.success(f"Successfully applied {len(unapplied_migrations)} migrations.")
+    
+    def applymigrations(self):
+        models = self.scan()
+        for model in models:
+            self.apply_class_migrations(model)
             
     
 if __name__ == "__main__":

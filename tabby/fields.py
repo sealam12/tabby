@@ -33,3 +33,8 @@ class StringField(Field):
 class IntegerField(Field):
     def __init__(self, **kwargs):
         super().__init__("INTEGER", **kwargs)
+
+class ForeignKey(Field):
+    def __init__(self, reference_class, **kwargs):
+        self.reference_class = reference_class
+        super().__init__("INTEGER", **kwargs)
