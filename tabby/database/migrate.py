@@ -1,24 +1,36 @@
 import os, sys, json
-from tabby.connection import db
-from tabby.adapters import Connector
-from tabby.model import Model
-from tabby import serialize
-from tabby import log
+from tabby.database.connection import db
+from tabby.database.adapters import Connector
+from tabby.models.model import Model
+from tabby.models import serialize
+from tabby.utils import log
 
 class MigrationManager:
     def __init__(self, models_path, migrations_path):
         self.models_path = models_path
         self.migrations_path = migrations_path
         Connector.migrations.ensure_table()
+        os.makedirs(migrations_path, exist_ok=True)
     
     def scan_file(self, file):
-        module_name = file[0:-3]
+        # Get the directory of the file
+        directory = os.path.dirname(file)
+        
+        # Extract the module name without the .py extension
+        module_name = os.path.splitext(os.path.basename(file))[0]
+        
+        # Append the directory to sys.path
+        if directory not in sys.path:
+            sys.path.append(directory)
+        
+        # Import the module
+        module = __import__(module_name)
+        
         models = []
-        module = __import__("tabby.model", fromlist="model")
         for obj in module.__dict__.values():
-            #print(obj, isinstance(obj, type))
             if isinstance(obj, type) and issubclass(obj, Model) and obj != Model: 
                 models.append(obj)
+        
         return models
         
     def scan(self):
@@ -138,9 +150,3 @@ class MigrationManager:
         models = self.scan()
         for model in models:
             self.apply_class_migrations(model)
-            
-    
-if __name__ == "__main__":
-    m = MigrationManager("model.py", "migrations")
-    m.makemigrations()
-    m.applymigrations()

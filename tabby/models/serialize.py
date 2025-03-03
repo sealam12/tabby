@@ -1,5 +1,5 @@
-from tabby.model import *
-from tabby.fields import *
+from tabby.models.model import *
+from tabby.models.fields import *
 import json
 
 def serialize_field(cls):

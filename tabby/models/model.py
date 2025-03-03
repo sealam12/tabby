@@ -1,5 +1,5 @@
-from tabby.fields import *
-from tabby.adapters import Connector
+from tabby.models.fields import *
+from tabby.database.adapters import Connector
 
 class Model:
     def __init__(self, **kwargs):
@@ -57,8 +57,3 @@ class Model:
     @classmethod
     def get_table(cls):
         return cls.__name__.lower()
-
-class User(Model):
-    id = IntegerField(primary_key=True)
-    username = StringField()
-    password = StringField()

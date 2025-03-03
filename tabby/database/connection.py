@@ -1,5 +1,5 @@
 import sqlite3
-from tabby.config import Settings
+from tabby.utils.config import Settings
 
 class ConnectionManager:
     def __init__(self, database):

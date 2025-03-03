@@ -1,6 +1,6 @@
-from tabby.connection import db
-from tabby.config import Settings
-from tabby.fields import *
+from tabby.database.connection import db
+from tabby.utils.config import Settings
+from tabby.models.fields import *
 import inspect
 
 class SQLiteMigration:

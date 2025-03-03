@@ -1,6 +1,7 @@
 RED = '\033[31m'
 GREEN = '\033[32m'
 BLUE = '\033[34m'
+YELLOW = '\033[33m'
 RESET = '\033[0m'
 
 def log(*args, **kwargs):
@@ -31,6 +32,16 @@ def info(*args, **kwargs):
     for arg in args:
         if isinstance(arg, str):
             newargs.append(f"{BLUE}{arg}{RESET}")
+        else:
+            newargs.append(arg)
+    
+    print(*newargs, **kwargs)
+    
+def warn(*args, **kwargs):
+    newargs = []
+    for arg in args:
+        if isinstance(arg, str):
+            newargs.append(f"{YELLOW}{arg}{RESET}")
         else:
             newargs.append(arg)
     
