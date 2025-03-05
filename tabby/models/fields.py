@@ -1,6 +1,8 @@
 class Field:
-    def __init__(self, sql_type, unique=False, notnull=True, default=None, primary_key=False):
+    def __init__(self, sql_type, python_type, unique=False, notnull=True, default=None, primary_key=False):
         self.sql_type = sql_type
+        self.python_type = python_type
+        
         self.unique = unique
         self.notnull = notnull
         self.default = None
@@ -22,7 +24,7 @@ class Field:
 class StringField(Field):
     def __init__(self, max_length=255, **kwargs):
         self.max_length = max_length
-        super().__init__("TEXT", **kwargs)
+        super().__init__("TEXT", str, **kwargs)
     
     def can_set(self, val):
         if len(val) > self.max_length:
@@ -32,9 +34,9 @@ class StringField(Field):
 
 class IntegerField(Field):
     def __init__(self, **kwargs):
-        super().__init__("INTEGER", **kwargs)
+        super().__init__("INTEGER", int, **kwargs)
 
 class ForeignKey(Field):
     def __init__(self, reference_class, **kwargs):
         self.reference_class = reference_class
-        super().__init__("INTEGER", **kwargs)
+        super().__init__("INTEGER", reference_class, **kwargs)

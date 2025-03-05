@@ -12,7 +12,7 @@ def serialize_field(cls):
 
 def serialize_model(cls):
     data = {
-        "fields": {k: serialize_field(field) for k, field in cls.get_fields().items()}
+        "fields": {k: serialize_field(field) for k, field in cls._model_fields_dict.items()}
     }
     
     return data

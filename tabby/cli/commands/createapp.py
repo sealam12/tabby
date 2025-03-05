@@ -9,11 +9,22 @@ DATABASE_PATH = BASE_PATH + "database/db.sqlite3"
 MIGRATIONS_PATH = BASE_PATH + "database/migrations/"
 DATABASE_ADAPTER = "SQLite"'''
 
+user_model_file = """from tabby.models.model import Model
+from tabby.models.fields import *
+
+class User(Model):
+    username = StringField()
+    password = StringField()
+"""
+
 structure = {
     "app": {
         "models": {
-            "user.py": ""
+            "user.py": user_model_file,
         },
+        "views": {},
+        "middleware": {},
+        "routes.py": ""
     },
     "database": {
         "migrations": {},

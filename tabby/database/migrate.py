@@ -3,7 +3,7 @@ from tabby.database.connection import db
 from tabby.database.adapters import Connector
 from tabby.models.model import Model
 from tabby.models import serialize
-from tabby.utils import log
+from tabby.utils import log, errors
 
 class MigrationManager:
     def __init__(self, models_path, migrations_path):
@@ -70,13 +70,13 @@ class MigrationManager:
             
             log.log("Saving migration...")
             data['cmds'].append(Connector.migrations.new_table(cls))
-            migration_name = f"{cls.get_table()}_{migration_id:04}"
+            migration_name = f"{cls._table}_{migration_id:04}"
             self.save_migration(data, migration_name)
             
-            save_cmd = Connector.migrations.save_migration(cls.get_table(), migration_id)
+            save_cmd = Connector.migrations.save_migration(cls._table, migration_id)
             db.execute(save_cmd)
             
-            log.success(f"Saved migration to {self.migrations_path}/{migration_name}.json")
+            log.success(f"Saved migration to {self.migrations_path}{migration_name}.json")
         else:
             most_recent = sorted(previous_migrations)[-1]
             migration_id = len(previous_migrations)
@@ -96,6 +96,14 @@ class MigrationManager:
             for key, field in current_schema["fields"].items():
                 if key not in old_schema["fields"].keys():
                     log.log(f"Found new field {key}")
+                    
+                    found = False
+                    for constr in field["constraints"]:
+                        if "DEFAULT" in constr:
+                            found = True
+                    if not found and "NOT NULL" in field["constraints"]:
+                        raise errors.NotNullConstraintError(f"Cannot add new field {key} to {cls._table} with NOT NULL constraint which has no default value")
+                        
                     data["cmds"].append(Connector.migrations.new_field(cls, key, field))
             
             # Check for fields being removed
@@ -116,11 +124,15 @@ class MigrationManager:
                     data["cmds"].append(Connector.migrations.transfer_fields(cls, f"{key}_tmp", key))
                     data["cmds"].append(Connector.migrations.remove_field(cls, f"{key}_tmp"))
             
-            migration_name = f"{cls.get_table()}_{migration_id:04}"
+            log.log("Saving migration...")
+            
+            migration_name = f"{cls._table}_{migration_id:04}"
             self.save_migration(data, migration_name)
             
-            save_cmd = Connector.migrations.save_migration(cls.get_table(), migration_id)
+            save_cmd = Connector.migrations.save_migration(cls._table, migration_id)
             db.execute(save_cmd)
+            
+            log.success(f"Saved migration to {self.migrations_path}{migration_name}.json")
         
         db.commit()
     
@@ -139,7 +151,7 @@ class MigrationManager:
             migration_name = f"{migration[1]}_{migration[0]:04}"
             # Load migration file and it's data
             migration_data = self.load_migration(f"{migration_name}")
-            log.log(f"Applying migration {migration_name}...")
+            log.info(f"Applying migration {migration_name}...")
             # Execute command specified by migration file
             for cmd in migration_data["cmds"]: db.execute(cmd)
             # Set migration status to applied in the database
