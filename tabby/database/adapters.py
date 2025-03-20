@@ -46,7 +46,7 @@ class SQLiteMigration:
         return command
 
     def set_migration_applied(self, table, id):
-        command = f"UPDATE _migrations SET applied=TRUE WHERE table_name=\"{table}\", migration_id={id}"
+        command = f"UPDATE _migrations SET applied=TRUE WHERE (table_name=\"{table}\" AND migration_id={id})"
         return command
 
 class SQLite:
@@ -83,7 +83,7 @@ class SQLite:
         
         kwargs_list = [f"{k}={v}" for k, v in kwargs.items() if not isinstance(v, str)]
         kwargs_list.extend([f"{k}=\"{v}\"" for k, v in kwargs.items() if isinstance(v, str)])
-        kwargs_text = ", ".join(kwargs_list)
+        kwargs_text = " AND ".join(kwargs_list)
         model_data_all = db.execute(f"SELECT {columns_text} FROM {table_name} WHERE ({kwargs_text})").fetchall()
         
         models = []
@@ -130,7 +130,6 @@ class SQLite:
             
             columns_set_list.append(f"{k}={v}")
         columns_set_text = ", ".join(columns_set_list)
-        print(f"UPDATE {cls._table} SET {columns_set_text} WHERE id={cls.id}")
         db.execute(f"UPDATE {cls._table} SET {columns_set_text} WHERE id={cls.id}")
         db.commit()
 

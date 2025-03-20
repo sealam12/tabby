@@ -155,7 +155,9 @@ class MigrationManager:
             # Execute command specified by migration file
             for cmd in migration_data["cmds"]: db.execute(cmd)
             # Set migration status to applied in the database
-            Connector.migrations.set_migration_applied(migration[1], migration[0])
+            cmd = Connector.migrations.set_migration_applied(migration[1], migration[0])
+            print(cmd)
+            db.execute(cmd)
         log.success(f"Successfully applied {len(unapplied_migrations)} migrations.")
     
     def applymigrations(self):
