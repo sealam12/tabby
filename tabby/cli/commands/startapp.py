@@ -58,4 +58,8 @@ def gen_project(directory, name):
             gen_file(f"{starting_directory}/{name}", contents)
 
 def ExecuteCommand(args):
+    if len(args) < 2:
+        print("Usage: tabby startapp [name]")
+        return
+    
     gen_project(os.getcwd(), args[1])
